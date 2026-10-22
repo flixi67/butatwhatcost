@@ -2,7 +2,8 @@
 
 import sqlite3
 
-from butatwhatcost import cost_for, model_cost, lineage_ids, session_usage, parse_pricing
+from butatwhatcost import (cost_for, model_cost, lineage_ids, session_usage,
+                           parse_pricing, account_total, build_report)
 
 
 def test_cost_for_per_million():
@@ -65,3 +66,24 @@ def test_parse_pricing_handles_missing_and_null():
     p = parse_pricing(payload)
     assert p["a/b"]["input_tokens"] == 0.06
     assert p["c/d"] == {}          # no crash; cost falls back to estimate
+
+
+def test_account_total_recomputes_from_raw():
+    # DeepInfra's `cost` field is rounded to whole dollars (units*rate -> int);
+    # we rebuild from raw units*rate so nothing is lost to rounding.
+    months = [{"period": "2026.10", "items": [
+        {"model_name": "x", "pricing_type": "input_tokens", "units": 1_000_000, "rate": 6e-05, "cost": 60},
+        {"model_name": "x", "pricing_type": "output_tokens", "units": 500_000, "rate": 1.8e-04, "cost": 90}]}]
+    assert abs(account_total(months) - 150.0) < 1e-6
+
+
+def test_build_report_shape():
+    price = {"deepseek-ai/DeepSeek-V4-Flash-0731": {"input_tokens": 0.06,
+             "output_tokens": 0.18, "cache_read_tokens": 0.015, "discount": None}}
+    rows = [("deepseek-ai/DeepSeek-V4-Flash-0731", "", 2, 1_000_000, 500_000,
+             2_000_000, 0, 100_000, 0.03)]
+    r = build_report(rows, price)
+    assert r["models"]["deepseek-ai/DeepSeek-V4-Flash-0731"]["cost"] == 0.06 + 0.09 + 0.03 + 0.018
+    assert r["totals"]["cost"] > 0
+    assert r["totals"]["input_tokens"] == 1_000_000
+    assert r["totals"]["api_calls"] == 2
