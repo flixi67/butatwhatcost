@@ -3,7 +3,7 @@
 import sqlite3
 
 from butatwhatcost import (cost_for, model_cost, lineage_ids, session_usage,
-                           parse_pricing, account_total, build_report)
+                           parse_pricing, account_total, build_report, session_exists)
 
 
 def test_cost_for_per_million():
@@ -66,6 +66,13 @@ def test_parse_pricing_handles_missing_and_null():
     p = parse_pricing(payload)
     assert p["a/b"]["input_tokens"] == 0.06
     assert p["c/d"] == {}          # no crash; cost falls back to estimate
+
+
+def test_session_exists(tmp_path):
+    con = _make_db(tmp_path)
+    assert session_exists(con, "gcur")
+    assert session_exists(con, "root")
+    assert not session_exists(con, "nope")   # phantom/stale id must be caught
 
 
 def test_account_total_recomputes_from_raw():

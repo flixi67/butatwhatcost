@@ -76,6 +76,13 @@ def session_usage(con, session_ids: list) -> list:
     return con.execute(q, session_ids).fetchall()
 
 
+def session_exists(con, session_id: str) -> bool:
+    """True when the session has a row in state.db. A missing row means the id
+    is a phantom/stale value (e.g. a rolled-back $HERMES_SESSION_ID) and must
+    not silently report $0."""
+    return con.execute("SELECT 1 FROM sessions WHERE id=?", (session_id,)).fetchone() is not None
+
+
 def account_total(months: list) -> float:
     """Rebuild account cost from raw units*rate (DeepInfra's `cost` field is
     rounded). `months` = response['months'] from /payment/usage."""
@@ -196,6 +203,12 @@ def main(argv=None) -> int:
         print("no HERMES_SESSION_ID set and --session-id not given; cannot attribute", file=sys.stderr)
         return 2
     con = sqlite3.connect(str(home / "state.db"))
+    if not session_exists(con, args.session_id):
+        print(f"session {args.session_id!r} not found in state.db (stale $HERMES_SESSION_ID?); "
+              f"pass --session-id with the id shown in the /butatwhatcost skill message",
+              file=sys.stderr)
+        con.close()
+        return 3
     rows = session_usage(con, lineage_ids(con, args.session_id))
     report = build_report(rows, pricing)
     con.close()
