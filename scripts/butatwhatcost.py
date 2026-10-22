@@ -151,21 +151,26 @@ def load_api_key(home) -> str:
 
 
 def render_human(report: dict, session_id: str, account_cost, pricing: dict) -> str:
+    def counts(m):
+        parts = [f"calls={m['api_calls']}", f"in={m['input_tokens']:,}",
+                 f"out={m['output_tokens']:,}", f"cache={m['cache_read_tokens']:,}"]
+        if m["reasoning_tokens"]:
+            parts.append(f"reas={m['reasoning_tokens']:,}")
+        if m["cache_write_tokens"]:
+            parts.append(f"cacheW={m['cache_write_tokens']:,}")
+        return " ".join(parts)
+
     lines = [f"butatwhatcost — session {session_id}"]
     for model, m in report["models"].items():
         lines.append(
-            f"  {model}  calls={m['api_calls']} "
-            f"in={m['input_tokens']:,} out={m['output_tokens']:,} "
-            f"cache={m['cache_read_tokens']:,} cost=${m['cost']:.4f}"
+            f"  {model}  {counts(m)}  cost=${m['cost']:.4f}"
             + ("  (rate unavailable; used Hermes estimate)" if m["rate_missing"] else ""))
         pr = pricing.get(model)
         if pr:
             lines.append(f"      live rates: in ${pr['input_tokens']}/M "
                          f"out ${pr['output_tokens']}/M cache_read ${pr['cache_read_tokens']}/M")
     t = report["totals"]
-    lines.append(f"  TOTAL calls={t['api_calls']} in={t['input_tokens']:,} "
-                 f"out={t['output_tokens']:,} cache_read={t['cache_read_tokens']:,} "
-                 f"cost=${t['cost']:.4f}")
+    lines.append(f"  TOTAL {counts(t)} cost=${t['cost']:.4f}")
     if account_cost is not None:
         lines.append(f"  DeepInfra account (month): ${account_cost:.2f}")
     return "\n".join(lines)
